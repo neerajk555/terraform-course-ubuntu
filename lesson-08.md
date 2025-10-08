@@ -445,6 +445,75 @@ terraform output discovered_info
 terraform workspace select default
 ```
 
+## Step 9: Clean Up Resources ⚠️ IMPORTANT
+
+Since this lesson creates actual EC2 instances and AWS resources, it's essential to clean them up to avoid charges.
+
+### Default Workspace Cleanup
+
+```bash
+# Switch to default workspace if not already there
+terraform workspace select default
+
+# Preview what will be destroyed
+terraform plan -destroy
+
+# Destroy all resources in default workspace
+terraform destroy -auto-approve
+
+# Verify cleanup
+terraform state list
+# Should be empty
+```
+
+### Multi-Workspace Cleanup (If you did Exercise 3)
+
+```bash
+# List all workspaces
+terraform workspace list
+
+# Clean up us-west-2 workspace if you created it
+terraform workspace select us-west-2
+terraform destroy -auto-approve
+
+# Delete the workspace (optional)
+terraform workspace select default
+terraform workspace delete us-west-2
+
+# Verify no resources remain
+aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=lesson-8-server" \
+  --query 'Reservations[*].Instances[*].[InstanceId,State.Name,Tags[?Key==`Name`].Value|[0]]' \
+  --output table
+# Should show no running instances
+```
+
+### What Gets Cleaned Up
+
+**✅ Resources Destroyed:**
+- 🖥️ EC2 instance(s) created during the lesson
+- 🏷️ All custom tags we applied
+- 💾 Any EBS volumes attached to instances
+
+**✅ What Remains (Safe & Free):**
+- 🌐 Default VPC and subnets (AWS-managed)
+- 📊 Data source queries (read-only, no cost)
+- 📄 Your Terraform configuration files
+- 🔧 Terraform state tracking (now empty)
+
+### Cost Verification
+
+```bash
+# Check that no EC2 instances are running
+aws ec2 describe-instances \
+  --query 'Reservations[*].Instances[?State.Name==`running`].[InstanceId,InstanceType,LaunchTime]' \
+  --output table
+
+# Should show only instances you intentionally left running (if any)
+```
+
+**💡 Pro Tip:** This lesson demonstrates the power of data sources - they don't create billable resources, just query existing ones. However, the EC2 instances we created for testing do cost money, so always clean up!
+
 ## Troubleshooting Tips
 - If no AMI found: Verify filters and region.
 - Permissions errors: Ensure your IAM user has describe permissions (typical for most AWS policies).

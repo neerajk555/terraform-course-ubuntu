@@ -128,6 +128,109 @@ Included above.
 ## Hands-On Exercise
 - Modify the playbook to install `git` and verify with `ansible -i inventory.ini -m command -a "git --version" web`.
 
+## Clean Up Resources ⚠️ IMPORTANT
+
+This lesson creates EC2 instances, security groups, and key pairs, plus generates local files that should be cleaned up.
+
+### Standard Infrastructure Cleanup
+
+```bash
+# Preview what will be destroyed
+terraform plan -destroy
+
+# Destroy all AWS resources
+terraform destroy -auto-approve
+
+# Verify AWS resources are gone
+terraform state list
+# Should be empty
+
+aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=lesson-13-web" \
+  --query 'Reservations[*].Instances[*].[InstanceId,State.Name]' \
+  --output table
+```
+
+### Clean Up Generated Files
+
+This lesson creates local files that you might want to remove:
+
+```bash
+# Remove Ansible inventory file
+rm -f inventory.ini
+
+# Remove Ansible playbook (or keep for reference)
+# rm -f playbook.yml
+
+# Check what files remain
+ls -la
+# Should show: main.tf and optionally playbook.yml
+```
+
+### Understanding Terraform + Ansible Cleanup
+
+**🔗 Integration Impact:**
+- Terraform manages AWS infrastructure lifecycle
+- Ansible only configures - no cleanup needed for software
+- Local files created by `local_file` resource are tracked by Terraform
+
+**🗂️ What Gets Cleaned Up:**
+
+**✅ AWS Resources (via Terraform):**
+- 🖥️ EC2 instance (with all Ansible-installed software)
+- 🛡️ Security group
+- 🔑 SSH key pair in AWS
+- 🏷️ All tags and metadata
+
+**✅ Local Files (via Terraform):**
+- 📄 `inventory.ini` (tracked by `local_file` resource)
+- 🔄 Terraform removes this during `destroy`
+
+**✅ Manual Cleanup (Optional):**
+- 📋 `playbook.yml` (not managed by Terraform)
+- 📁 Any other files you created
+
+### Verify Complete Integration Cleanup
+
+```bash
+# Check no Terraform-managed resources remain
+terraform state list
+
+# Check no AWS resources with lesson tags
+aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=lesson-13-web" \
+  --query 'Reservations[*].Instances[?State.Name!=`terminated`].[InstanceId,State.Name]' \
+  --output table
+
+# Verify local inventory file was removed
+ls inventory.ini 2>/dev/null || echo "inventory.ini successfully removed by Terraform"
+
+# Check if playbook still exists (this is normal)
+ls -la playbook.yml
+```
+
+### Cost Considerations
+
+**💰 Resources That Were Costing Money:**
+- EC2 t2.micro instance (~$8.50/month)
+- EBS storage (~$0.10/GB/month)
+- Data transfer costs
+
+**🆓 Free Components:**
+- Ansible software (open source)
+- Local file operations
+- SSH connections
+- Terraform state operations
+
+### Integration Best Practices for Future
+
+**🔄 Cleanup Workflow:**
+1. Always `terraform destroy` first (removes infrastructure)
+2. Manually remove any generated files not tracked by Terraform
+3. Keep playbooks for reuse but remove generated inventories
+
+**💡 Pro Tip:** In production, consider using dynamic inventories or external inventory scripts instead of `local_file` resources to avoid mixing infrastructure and configuration management concerns.
+
 ## Troubleshooting Tips
 - SSH issues: Ensure key path and username `ec2-user` are correct.
 - Ansible `UNREACHABLE`: Instance might not be ready—rerun the `null_resource` by tainting or `terraform apply` again.

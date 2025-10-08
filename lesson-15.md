@@ -848,29 +848,153 @@ terraform destroy -target="aws_autoscaling_group.app"
 terraform apply -var="desired_capacity=1" -var="min_size=1"
 ```
 
-### Step 10: Clean Up Resources
+### Step 10: Clean Up Resources ⚠️ CRITICAL
 
-⚠️ **Important:** This infrastructure costs real money. Clean up when done learning!
+This final project creates the most expensive infrastructure in the entire course. **Cleanup is essential** to avoid significant charges!
 
+#### 💰 Cost Impact Before Cleanup
+
+**Always-On Charges (24/7):**
+- Application Load Balancer: ~$18/month
+- NAT Gateway: ~$32/month  
+- EBS volumes: ~$2-4/month
+- **Base cost: ~$52+/month**
+
+**Variable Charges:**
+- EC2 instances: $8.50/month per t3.micro (2-5 instances)
+- Data transfer: $5-15/month
+- **Total potential: $75-90/month if left running**
+
+#### Step-by-Step Cleanup Process
+
+**1. Preview Complete Destruction**
 ```bash
-# Option 1: Destroy everything
+# See exactly what will be destroyed (20+ resources)
+terraform plan -destroy
+
+# OR if you used production config
+terraform plan -destroy -var-file="prod.tfvars"
+```
+
+**2. Execute Full Cleanup**
+```bash
+# Option 1: Destroy everything (default config)
 terraform destroy
 
 # Option 2: Destroy with production config
 terraform destroy -var-file="prod.tfvars"
 
-# Confirm when prompted by typing 'yes'
+# Confirm by typing 'yes' when prompted
 ```
 
-**What gets destroyed:**
-- All EC2 instances
-- Load balancer and target groups
-- VPC and all networking components
-- Security groups
-- CloudWatch alarms
-- Auto scaling configuration
+**3. Monitor Destruction Progress**
+```bash
+# Destruction takes 5-15 minutes - you'll see:
+# - Auto Scaling Group deletion
+# - EC2 instances termination  
+# - Load balancer deletion
+# - VPC component cleanup
+# - Security group removal
+```
 
-**Destruction takes 5-15 minutes**
+#### Verify Complete Cleanup
+
+```bash
+# Check Terraform state is empty
+terraform state list
+# Should output: (nothing)
+
+# Verify no EC2 instances remain
+aws ec2 describe-instances \
+  --filters "Name=tag:Project,Values=final-webapp,webapp-prod" \
+  --query 'Reservations[*].Instances[?State.Name!=`terminated`].[InstanceId,State.Name,Tags[?Key==`Name`].Value|[0]]' \
+  --output table
+
+# Check no load balancers remain
+aws elbv2 describe-load-balancers \
+  --query 'LoadBalancers[?starts_with(LoadBalancerName, `final-webapp`) || starts_with(LoadBalancerName, `webapp-prod`)].LoadBalancerName' \
+  --output table
+
+# Verify no custom VPCs remain (should only see default VPC)
+aws ec2 describe-vpcs \
+  --filters "Name=tag:Project,Values=final-webapp,webapp-prod" \
+  --query 'Vpcs[*].[VpcId,Tags[?Key==`Name`].Value|[0]]' \
+  --output table
+```
+
+#### What Gets Destroyed
+
+**✅ Complete Infrastructure Removal:**
+- 🏗️ **Networking:** Custom VPC, subnets, route tables, NAT gateway, internet gateway
+- ⚖️ **Load Balancing:** Application Load Balancer, target groups, health checks
+- 💻 **Compute:** All EC2 instances, launch templates, auto scaling groups
+- 🔒 **Security:** All custom security groups and rules
+- 📊 **Monitoring:** CloudWatch alarms, scaling policies
+- 🏷️ **Metadata:** All tags, resource names, configurations
+
+**✅ What Remains (Safe & Free):**
+- 📄 Your Terraform configuration files (keep these!)
+- 🌐 Default VPC and subnets (AWS-managed, always free)
+- 📋 Your learning notes and screenshots
+- 🎓 The knowledge you gained building this!
+
+#### Emergency Cleanup (If Terraform Destroy Fails)
+
+Sometimes resources get stuck. Here's manual cleanup:
+
+```bash
+# 1. Force delete Auto Scaling Groups
+aws autoscaling describe-auto-scaling-groups \
+  --query 'AutoScalingGroups[?contains(AutoScalingGroupName, `final-webapp`) || contains(AutoScalingGroupName, `webapp-prod`)].AutoScalingGroupName' \
+  --output text | xargs -I {} aws autoscaling delete-auto-scaling-group --auto-scaling-group-name {} --force-delete
+
+# 2. Terminate any remaining instances
+aws ec2 describe-instances \
+  --filters "Name=tag:Project,Values=final-webapp,webapp-prod" "Name=instance-state-name,Values=running,pending" \
+  --query 'Reservations[*].Instances[*].InstanceId' \
+  --output text | xargs -I {} aws ec2 terminate-instances --instance-ids {}
+
+# 3. Delete load balancers
+aws elbv2 describe-load-balancers \
+  --query 'LoadBalancers[?starts_with(LoadBalancerName, `final-webapp`) || starts_with(LoadBalancerName, `webapp-prod`)].LoadBalancerArn' \
+  --output text | xargs -I {} aws elbv2 delete-load-balancer --load-balancer-arn {}
+
+# 4. Wait 10 minutes, then delete VPC (last step)
+```
+
+#### Post-Cleanup Verification
+
+**Check AWS Billing Dashboard:**
+1. Go to AWS Console → Billing & Cost Management
+2. Check "Bills" section for current month
+3. Verify no new charges after cleanup timestamp
+4. Set up billing alerts for future projects
+
+**Set Billing Alerts (Recommended):**
+```bash
+# Create a simple billing alert for $10
+aws budgets create-budget \
+  --account-id $(aws sts get-caller-identity --query Account --output text) \
+  --budget file://billing-alert.json
+```
+
+#### Cleanup Best Practices for Future
+
+**🔄 Regular Cleanup Schedule:**
+- Always `terraform destroy` after learning sessions
+- Set calendar reminders for weekend resource reviews
+- Use tags consistently to track learning resources
+
+**💡 Cost Management Tips:**
+- Never leave learning infrastructure running overnight
+- Use `terraform plan -destroy` before every break
+- Consider using `terraform apply -auto-approve` only for destruction
+- Take screenshots of working infrastructure before destroying
+
+**🎯 Final Project Achievement Unlocked:**
+You've successfully built and cleaned up production-grade infrastructure! This same pattern scales to support millions of users. The configuration you wrote could handle a real business workload with minimal changes.
+
+**Destruction takes 5-15 minutes to complete all resource cleanup**
   security_groups    = [module.sg_alb.security_group_id]
 
   target_groups = [

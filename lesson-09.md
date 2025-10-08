@@ -106,6 +106,74 @@ Included above.
 ## Hands-On Exercise
 - Add another module call to create a second instance in a different subnet (element index 1).
 
+## Clean Up Resources ⚠️ IMPORTANT
+
+This lesson creates EC2 instances using modules, so cleanup is essential to avoid charges.
+
+### Standard Cleanup Process
+
+```bash
+# Preview all resources that will be destroyed
+terraform plan -destroy
+
+# Destroy all resources (both root and module resources)
+terraform destroy -auto-approve
+
+# Verify complete cleanup
+terraform state list
+# Should be empty
+
+# Verify no EC2 instances remain
+aws ec2 describe-instances \
+  --filters "Name=tag:Project,Values=Lesson-9" \
+  --query 'Reservations[*].Instances[*].[InstanceId,State.Name,Tags[?Key==`Name`].Value|[0]]' \
+  --output table
+```
+
+### Understanding Module Resource Cleanup
+
+**📦 What Modules Don't Change About Cleanup:**
+- `terraform destroy` works the same way
+- All resources created by modules get destroyed
+- State tracking includes both root and module resources
+
+**🔍 Module Resources in State:**
+```bash
+# Before destroy, see how modules appear in state
+terraform state list
+# You'll see resources like:
+# module.web.aws_instance.this
+# module.web.data.aws_ami.amazon_linux_2
+```
+
+### If You Did the Hands-On Exercise (Multiple Instances)
+
+```bash
+# If you added a second module call, both instances get destroyed
+terraform destroy -auto-approve
+
+# Verify both instances are gone
+aws ec2 describe-instances \
+  --filters "Name=tag:Project,Values=Lesson-9" \
+  --query 'Reservations[*].Instances[?State.Name!=`terminated`].[InstanceId,State.Name]' \
+  --output table
+# Should show no non-terminated instances
+```
+
+### Cost Impact
+
+**💰 Resources That Cost Money:**
+- EC2 instances (~$8.50/month each if left running)
+- EBS storage attached to instances
+- Any additional instances from the exercise
+
+**✅ Free Resources:**
+- Module definitions (they're just code)
+- Data source queries
+- Default VPC and subnets
+
+**💡 Module Cleanup Tip:** Modules don't change how resources are destroyed - Terraform treats module resources like any other resources in the dependency graph.
+
 ## Troubleshooting Tips
 - If the module path is wrong: Ensure `source = "./modules/ec2-basic"` matches your folder structure.
 - If AMI not found: Region/filter mismatch—see Lesson 8.

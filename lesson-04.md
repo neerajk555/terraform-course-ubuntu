@@ -405,25 +405,140 @@ uname -a
 exit
 ```
 
-### Step 8: Clean Up Resources (Optional)
+### Step 8: Clean Up Resources ⚠️ IMPORTANT
 
-⚠️ **Important:** AWS charges for running instances. Clean up when done practicing!
+AWS charges for running instances, so it's crucial to clean up when you're done practicing! Let's do this step by step.
 
+#### Why Cleanup Matters
+
+**💰 Cost Impact:**
+- EC2 t2.micro: ~$8.50/month if left running
+- While it's free-tier eligible, you have limited hours per month
+- Good practice for real-world scenarios where resources cost money
+
+**🏗️ Resource Limits:**
+- AWS accounts have default limits (e.g., 20 EC2 instances)
+- Clean environments prevent confusion in later lessons
+- Keeps your AWS console organized
+
+#### Before You Destroy: Backup Important Data
+
+```bash
+# If you created any files on the instance, download them first
+scp -i ~/.ssh/terraform_course ec2-user@$(terraform output -raw public_ip):/path/to/file ./local-backup/
+
+# Or take a screenshot of your AWS console showing the running instance
+```
+
+#### Step-by-Step Cleanup Process
+
+**1. Preview What Will Be Destroyed**
+```bash
+# See exactly what Terraform will delete
+terraform plan -destroy
+
+# This shows you a "reverse plan" - what gets removed
+```
+
+**Expected output:**
+```
+Plan: 0 to add, 0 to change, 4 to destroy.
+
+The following actions will be performed:
+  # aws_instance.web will be destroyed
+  - resource "aws_instance" "web" {
+      - ami           = "ami-0c02fb55956c7d316" -> null
+      - instance_type = "t2.micro" -> null
+      ...
+    }
+```
+
+**2. Execute the Destruction**
 ```bash
 # Destroy all resources created by Terraform
 terraform destroy
+
+# You'll be prompted to confirm - type 'yes' exactly
 ```
-Type `yes` when prompted.
 
-**What gets destroyed:**
-- Your EC2 instance (and all data on it)
-- The security group
-- The SSH key pair (from AWS, not your local files)
+**3. Verify Complete Cleanup**
+```bash
+# Check that no resources remain in state
+terraform state list
+# Should output: (nothing)
 
-**What remains:**
-- Your local SSH keys
-- Your Terraform configuration files
-- The default VPC and subnets (these are free)
+# Verify in AWS (optional but recommended)
+aws ec2 describe-instances --filters "Name=tag:Name,Values=tf-lesson-4" --query 'Reservations[*].Instances[*].[InstanceId,State.Name]' --output table
+# Should show no running instances with your tag
+```
+
+#### What Gets Destroyed vs. What Remains
+
+**✅ Gets Destroyed (This is what we want):**
+- 🖥️ Your EC2 instance (and all data stored on it)
+- 🛡️ The custom security group we created
+- 🔑 The SSH key pair registration in AWS
+- 🏷️ All tags and configurations we set
+
+**✅ Remains (This is normal and safe):**
+- 🔑 Your local SSH key files (`~/.ssh/terraform_course*`)
+- 📄 Your Terraform configuration files (main.tf, variables.tf, etc.)
+- 🌐 The default VPC and subnets (AWS-managed, always free)
+- 💾 Terraform state file (now empty but shows history)
+
+#### Emergency Cleanup (If Terraform Destroy Fails)
+
+Sometimes `terraform destroy` might fail. Here's how to clean up manually:
+
+```bash
+# 1. List any remaining resources in state
+terraform state list
+
+# 2. Force remove from state (only if AWS resource is already gone)
+# terraform state rm aws_instance.web
+
+# 3. Manual cleanup in AWS (last resort)
+aws ec2 terminate-instances --instance-ids i-1234567890abcdef0
+aws ec2 delete-security-group --group-id sg-1234567890abcdef0
+aws ec2 delete-key-pair --key-name terraform-course-key
+```
+
+#### Verification: Confirm Everything is Clean
+
+```bash
+# 1. Terraform state should be empty
+terraform show
+# Should output: (empty)
+
+# 2. No charges should appear in AWS
+# Check your billing dashboard at: https://console.aws.amazon.com/billing/
+
+# 3. Ready for next lesson
+ls -la
+# Your .tf files should still be here for future reference
+```
+
+#### Cost Monitoring Best Practices
+
+**🔔 Set Up Billing Alerts:**
+```bash
+# Enable billing alerts in AWS console
+aws budgets create-budget --account-id $(aws sts get-caller-identity --query Account --output text) --budget file://budget.json
+```
+
+**📊 Monitor Usage:**
+```bash
+# Check current month's estimated charges
+aws ce get-dimension-values --dimension SERVICE --time-period Start=2023-10-01,End=2023-10-31
+```
+
+**💡 Pro Tips for Learning:**
+- Always run `terraform plan -destroy` first
+- Set calendar reminders to clean up resources
+- Use tags consistently to track your learning resources
+- Consider using AWS CloudWatch billing alerts
+
+⚠️ **CRITICAL REMINDER:** Unlike code files that you can easily recreate, AWS resources cost real money. Always clean up when finishing a lesson unless you're actively working on the next one!
 
 ## Code Examples
 Included above with inline comments.

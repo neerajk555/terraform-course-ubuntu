@@ -77,6 +77,169 @@ Included above.
 - List workspaces: `terraform workspace list`.
 - Destroy only dev: `terraform workspace select dev && terraform destroy -var-file=dev.tfvars -auto-approve`.
 
+## Clean Up Resources ⚠️ CRITICAL - Multiple Environments
+
+This lesson creates resources in MULTIPLE workspaces, which means you could have double the charges if not properly cleaned up!
+
+### Understanding Multi-Environment Cleanup
+
+**⚠️ Why This Matters More:**
+- You created instances in both `dev` AND `prod` workspaces
+- Each workspace = separate infrastructure = separate costs
+- Must clean up EACH workspace individually
+- Forgetting one workspace = paying for unused resources
+
+### Step-by-Step Multi-Workspace Cleanup
+
+#### 1. List All Workspaces
+```bash
+# See all environments you created
+terraform workspace list
+# * default
+#   dev
+#   prod
+```
+
+#### 2. Clean Up Each Environment
+
+**Clean up DEV environment:**
+```bash
+# Switch to dev workspace
+terraform workspace select dev
+
+# Preview what will be destroyed in dev
+terraform plan -destroy -var-file=dev.tfvars
+
+# Destroy dev resources
+terraform destroy -var-file=dev.tfvars -auto-approve
+
+# Verify dev is clean
+terraform state list
+# Should be empty
+```
+
+**Clean up PROD environment:**
+```bash
+# Switch to prod workspace
+terraform workspace select prod
+
+# Preview what will be destroyed in prod
+terraform plan -destroy -var-file=prod.tfvars
+
+# Destroy prod resources
+terraform destroy -var-file=prod.tfvars -auto-approve
+
+# Verify prod is clean
+terraform state list
+# Should be empty
+```
+
+**Clean up DEFAULT workspace (if used):**
+```bash
+# Switch to default workspace
+terraform workspace select default
+
+# Check if anything exists
+terraform state list
+
+# If resources exist, destroy them
+terraform destroy -auto-approve
+```
+
+#### 3. Delete Empty Workspaces (Optional)
+
+```bash
+# Switch to default first
+terraform workspace select default
+
+# Delete empty workspaces
+terraform workspace delete dev
+terraform workspace delete prod
+
+# Verify only default remains
+terraform workspace list
+# * default
+```
+
+### Verification: Ensure Complete Cleanup
+
+```bash
+# Check NO EC2 instances remain with lesson-11 tags
+aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=app-dev,app-prod" \
+  --query 'Reservations[*].Instances[*].[InstanceId,State.Name,Tags[?Key==`Name`].Value|[0]]' \
+  --output table
+# Should show no running/pending instances
+
+# List all currently running instances (to be sure)
+aws ec2 describe-instances \
+  --filters "Name=instance-state-name,Values=running,pending" \
+  --query 'Reservations[*].Instances[*].[InstanceId,Tags[?Key==`Name`].Value|[0],InstanceType]' \
+  --output table
+```
+
+### Common Multi-Environment Mistakes
+
+**❌ Mistake 1: Only cleaning up one workspace**
+```bash
+# WRONG - only cleans current workspace
+terraform destroy -auto-approve
+```
+
+**✅ Correct: Clean each workspace**
+```bash
+# RIGHT - clean each environment individually
+terraform workspace select dev && terraform destroy -var-file=dev.tfvars -auto-approve
+terraform workspace select prod && terraform destroy -var-file=prod.tfvars -auto-approve
+```
+
+**❌ Mistake 2: Forgetting which workspace you're in**
+```bash
+terraform workspace show  # Always check first!
+```
+
+**❌ Mistake 3: Using wrong tfvars file**
+```bash
+# WRONG - using prod vars in dev workspace
+terraform workspace select dev
+terraform destroy -var-file=prod.tfvars  # This might not work or cause confusion
+```
+
+### Cost Impact Analysis
+
+**💰 Before Cleanup (Potential Monthly Cost):**
+- Dev instance: ~$8.50/month (t2.micro)
+- Prod instance: ~$8.50/month (t2.micro)
+- **Total: ~$17/month** for just these basic instances
+
+**✅ After Cleanup:**
+- All instances terminated
+- All charges stopped
+- Only pay for actual usage time
+
+### Emergency: "I Lost Track of My Workspaces!"
+
+```bash
+# 1. List all workspaces
+terraform workspace list
+
+# 2. Check each workspace for resources
+for workspace in $(terraform workspace list | grep -v "^*" | sed 's/^  //'); do
+    echo "=== Checking workspace: $workspace ==="
+    terraform workspace select $workspace
+    terraform state list
+done
+
+# 3. Clean up any workspace with resources
+# terraform workspace select WORKSPACE_NAME
+# terraform destroy -auto-approve
+
+# 4. Return to default
+terraform workspace select default
+```
+
+**💡 Pro Tip for Future Lessons:** Always use descriptive workspace names and clean up immediately after learning. Consider setting calendar reminders to review and clean up AWS resources weekly.
+
 ## Troubleshooting Tips
 - If you forget to switch workspace: You might deploy to the wrong environment—always check `terraform workspace show`.
 - If you prefer stricter separation: Use directory layout with separate backends (see Lesson 12).
